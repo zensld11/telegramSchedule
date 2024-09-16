@@ -11,8 +11,11 @@ import java.util.List;
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
-    //boolean existsByDateAndTimeFromAndTimeTo(LocalDate date, LocalTime timeFrom, LocalTime timeTo);
+
     List<Meeting> findByDate(LocalDate selectedDate);
 
-    List<Meeting> findByStartTimeBetween(LocalTime start, LocalTime end);
+    List<Meeting> findByDateAndStartTimeBetween(LocalDate date, LocalTime startTime, LocalTime endTime);
+
+   // List<Meeting> findByStartTimeBetween(LocalTime start, LocalTime end);
 }
+//boolean existsByDateAndTimeFromAndTimeTo(LocalDate date, LocalTime timeFrom, LocalTime timeTo);

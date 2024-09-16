@@ -2,14 +2,20 @@ package com.degilok.al.telegramtestw.configuration;
 
 import com.degilok.al.telegramtestw.entity.Meeting;
 import com.degilok.al.telegramtestw.repository.MeetingRepository;
-import com.degilok.al.telegramtestw.service.MessageService;
+import com.degilok.al.telegramtestw.service.impl.MeetingServiceImpl;
+import com.degilok.al.telegramtestw.service.impl.MessageServiceImpl;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.Getter;
 import lombok.Setter;
-import org.telegram.telegrambots.bots.DefaultBotOptions;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updates.SetWebhook;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
+import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
@@ -20,36 +26,34 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
+@Component
 @Getter
 @Setter
-public class BotConfigWithImpl extends SpringWebhookBot implements MessageService {
+@Slf4j
+public class BotConfigWithImpl extends SpringWebhookBot {
 
-    String webHootPath;
-    String botUserName;
-    String botToken;
+    private String webHootPath;
+    private String botUserName;
+    private String botToken;
 
+    @Autowired
+    @Lazy
+    private MeetingServiceImpl meetingServiceImpl;
 
-    private MessageService messageService;
-    private DefaultBotOptions defaultBotOptions;
+    @Autowired
+    @Lazy
+    private MessageServiceImpl messageServiceImpl;
+
+    @Autowired
+    @Lazy
     private MeetingRepository meetingRepository;
 
 
-    public BotConfigWithImpl(MessageService messageService, SetWebhook setWebhook) {
+    public BotConfigWithImpl(SetWebhook setWebhook) {
         super(setWebhook);
-        this.messageService = messageService;
-    }
-
-    @Override
-    public BotApiMethod<?> onWebhookUpdateReceived(Update update) {
-        if (update.hasMessage() && update.getMessage().hasText()) {
-            String messageText = update.getMessage().getText();
-
-            Long chatId = update.getMessage().getChatId();
-
-            processTextMessage(messageText, chatId);
-        }
-        return null;
+        this.webHootPath = setWebhook.getUrl();
     }
 
     @Override
@@ -68,22 +72,42 @@ public class BotConfigWithImpl extends SpringWebhookBot implements MessageServic
     }
 
 
+    @Operation(summary = "метод, который получает все виды обновления от тг")
     @Override
-    public void processTextMessage(String messageText, Long chatId) {
-        if (messageText.equals("/start")) {
-            sendTextMessage(chatId, "Привет! Выберите дату и время для встречи");
-            sendDateOptions(chatId);
-        } else {
-            saveBookingDetails(chatId, messageText);
-            sendTextMessage(chatId, "Тема встречи сохранена. Выберите дату");
+    public BotApiMethod<?> onWebhookUpdateReceived(Update update) {
+        if (update.hasMessage() && update.getMessage().hasText()) {
+            handleTextMessage(update.getMessage());
+        } else if (update.hasCallbackQuery()) {
+            handleCallBackQuery(update.getCallbackQuery());
         }
+        return null;
+    }
+
+    @Operation(summary = "обрабатывает сообщения и передает их на обработку в messageServiceImpl")
+    private void handleTextMessage(Message message) {
+        String messageText = message.getText();
+        Long chatId = message.getChatId();
+
+        log.info("Received message: " + messageText);
+        messageServiceImpl.processTextMessage(messageText, chatId);
+    }
+
+    @Operation(summary = "обрабатывает запросы, когда юзер нажимает на кнопку")
+    private void handleCallBackQuery(CallbackQuery callbackQuery) {
+        meetingServiceImpl.processCallBackQuery(callbackQuery);
     }
 
 
-    @Override
-    public void sendTextMessage(Long chatId, String text) {
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId.toString());
+    @Operation(summary = "отправляет юзеру кнопки с доступными временными слотами для бронирования встречи")
+    public void sendDateOptions(Long chatId) {
+        LocalDate selectedDate = LocalDate.now();
+        List<LocalTime> bookedTimes = getBookedTimes(selectedDate);
+
+        InlineKeyboardMarkup markup = createInlineKeyboard(bookedTimes);
+
+        SendMessage message = new SendMessage(chatId.toString(), "Выберите доступное время");
+        message.setReplyMarkup(markup);
+
         try {
             execute(message);
         } catch (TelegramApiException e) {
@@ -91,84 +115,31 @@ public class BotConfigWithImpl extends SpringWebhookBot implements MessageServic
         }
     }
 
-    @Override
-    public void processCalBackQuery(CallbackQuery callbackQuery) {
-        String callBackData = callbackQuery.getData();
-        Long chatId = callbackQuery.getMessage().getChatId();
-        if (callBackData.startsWith("Забронирован_")) {
-            String timeSlot = callBackData.substring(12);
-            LocalTime selectedTime = LocalTime.parse(timeSlot);
-            LocalDate selectedDate = LocalDate.now();
 
-            String responsiblePerson = "Ответственный"; // Здесь можно взять информацию из запроса или базы данных
-            String project = "Проект"; // Здесь можно взять информацию из запроса или базы данных
-            String topic = "Тема"; // Здесь можно взять информацию из запроса или базы данных
-
-            saveMeeting(chatId, selectedDate, selectedTime, responsiblePerson, project, topic);
-            //chatId, selectedDate, selectedTime, responsiblePerson, project, topic);
-
-            sendTextMessage(chatId, "Встреча забронирована на " + selectedTime.toString());
-        }
+    @Operation(summary = "список уже забронированных временных слотов для исключения из списка доступных")
+    private List<LocalTime> getBookedTimes(LocalDate localDate) {
+        List<Meeting> meetings = meetingRepository.findByDate(localDate);
+        return meetings.stream()
+                .map(Meeting::getStartTime)
+                .collect(Collectors.toList());
     }
 
 
-    @Override
-    public void saveMeeting(Long chatId, LocalDate date, LocalTime time, String selectedDate, String selectedTime, String topic) {
-
-        LocalDate localDate = LocalDate.parse(selectedDate);
-        LocalTime localTime = LocalTime.parse(selectedTime);
-
-        Meeting meeting = new Meeting();
-        meeting.setDate(localDate);
-        meeting.setStartTime(localTime);
-        meetingRepository.save(meeting);
-
-        sendTextMessage(chatId, "Ваша встреча успешно забронирована на " + selectedDate + " " + selectedTime);
-    }
-
-
-    @Override
-    public void sendDateOptions(Long chatId) {
-
-        LocalDate selectedDate = LocalDate.now();
-
-        List<Meeting> meetings = meetingRepository.findByDate(selectedDate);
-        List<LocalTime> bookedTimes = new ArrayList<>();
-        for (Meeting meeting : meetings) {
-            bookedTimes.add(meeting.getStartTime());
-        }
-
+    @Operation(summary = "создает инлайн(InlineKeyboardMarkup) с кнопками времени, и исключает те, что уже забронированы")
+    private InlineKeyboardMarkup createInlineKeyboard(List<LocalTime> bookedTimes) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-
-        List<List<InlineKeyboardButton>> rowsInLine = new ArrayList<>();
-
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (int hour = 8; hour <= 18; hour++) {
             LocalTime slot = LocalTime.of(hour, 0);
-
             if (!bookedTimes.contains(slot)) {
-                List<InlineKeyboardButton> rowInLine = new ArrayList<>();
-                InlineKeyboardButton button = new InlineKeyboardButton();
-                button.setText(slot.toString());
+                InlineKeyboardButton button = new InlineKeyboardButton(slot.toString());
                 button.setCallbackData("Забронирован_" + slot.toString());
-                rowInLine.add(button);
-                rowsInLine.add(rowInLine);
+                List<InlineKeyboardButton> row = new ArrayList<>();
+                row.add(button);
+                rows.add(row);
             }
         }
-        markup.setKeyboard(rowsInLine);
-
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId.toString());
-        message.setText("Выберите доступное время:");
-        message.setReplyMarkup(markup);
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public void saveBookingDetails(Long chatId, String messageText) {
-
+        markup.setKeyboard(rows);
+        return markup;
     }
 }

@@ -20,6 +20,7 @@ public class Meeting {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
+    Long chatId;
     String responsiblePerson;
     String project;
     String topic;
