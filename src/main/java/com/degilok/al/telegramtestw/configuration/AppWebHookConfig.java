@@ -18,9 +18,4 @@ public class AppWebHookConfig {
     public SetWebhook setWebhook() {
         return SetWebhook.builder().url(botConfig.getWebHookPath()).build();
     }
-
-    @Bean
-    public BotConfigWithImpl botConfigWithImpl(SetWebhook setWebhook) {
-        return new BotConfigWithImpl(setWebhook);
-    }
 }

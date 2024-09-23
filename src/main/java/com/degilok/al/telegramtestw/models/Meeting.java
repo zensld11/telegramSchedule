@@ -1,11 +1,12 @@
-package com.degilok.al.telegramtestw.entity;
+package com.degilok.al.telegramtestw.models;
 
+import com.degilok.al.telegramtestw.models.enums.TimeSlot;
+import com.degilok.al.telegramtestw.models.enums.UserState;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 
 @Entity
 @Getter
@@ -19,12 +20,14 @@ public class Meeting {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
-
     Long chatId;
     String responsiblePerson;
     String project;
     String topic;
     LocalDate date;
-    LocalTime startTime;
-    LocalTime endTime;
+    @Enumerated(EnumType.ORDINAL)
+    TimeSlot slot;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "user_session")
+    private UserState userSession;
 }
