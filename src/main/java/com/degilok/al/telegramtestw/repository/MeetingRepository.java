@@ -2,7 +2,6 @@ package com.degilok.al.telegramtestw.repository;
 
 import com.degilok.al.telegramtestw.models.Meeting;
 import com.degilok.al.telegramtestw.models.enums.TimeSlot;
-import com.degilok.al.telegramtestw.models.enums.UserState;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -18,11 +17,12 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
     //List<Meeting> findByChatIdAndSlot(Long chatId, TimeSlot slot);
 
-
     //отображать занятые слоты
     @Query(value = "select * from meetings where date = :date", nativeQuery = true)
     List<Meeting> findTimeSlotsByDate(LocalDate date);
 
+    @Query(value = "select m from Meeting m where m.slot = :slot and m.date = :date", nativeQuery = false)
+    Meeting findBySlotAndDate(TimeSlot slot, LocalDate date);
 
     @Query(value = "select * from meetings where chat_id = :chatId order by id desc limit 1 ", nativeQuery = true)
     Meeting findByChatId(Long chatId);

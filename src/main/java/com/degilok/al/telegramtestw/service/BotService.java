@@ -90,7 +90,6 @@ public class BotService extends SpringWebhookBot {
     public void handleInput(Long chatId, String input) {
         Meeting meeting = meetingRepository.findByChatId(chatId);
         //UserState currentState = userStates.getOrDefault(chatId, UserState.AWAITING_TOPIC);//todo: добавить логику обработки сообщений после брони окошка
-
         if (meeting == null) {
             sendTextMessage(chatId, "Встреча не найдена. Пожалуйста, начните заново с /start.");
         } else {
@@ -101,14 +100,14 @@ public class BotService extends SpringWebhookBot {
                     break;
                 case AWAITING_PROJECT:
                     meetingRepository.updateProject(UserState.AWAITING_DATE.name(), input, chatId, UserState.AWAITING_PROJECT.name());
-                    sendTextMessage(chatId, "Проект сохранен. Выберите дату");
+                    //sendTextMessage(chatId, "Проект сохранен. Выберите дату");
                     sendDateOptions(chatId);
                     break;
                 case AWAITING_DATE:
                     DayOfWeek selectedDayOfWeek = DayOfWeek.valueOf(input.split("_")[1].toUpperCase());
                     LocalDate selectedDate = getNextOrSameDayOfWeek(selectedDayOfWeek);
                     meetingRepository.updateDate(UserState.AWAITING_TIME.name(), selectedDate, chatId, UserState.AWAITING_DATE.name());
-                    sendTextMessage(chatId, "Дата сохранена. Выберите время");
+                    //sendTextMessage(chatId, "Дата сохранена. Выберите время");
                     sendTimeOptions(chatId, selectedDayOfWeek.name());
                     break;
                 case AWAITING_TIME:
@@ -117,11 +116,9 @@ public class BotService extends SpringWebhookBot {
                     DayOfWeek dayOfWeek = DayOfWeek.valueOf(input.split("_")[3].toUpperCase());
                     LocalDate date = getNextOrSameDayOfWeek(dayOfWeek);
                     if (meetingRepository.checkSlot(selectedTimeTimeSlot.ordinal(), date) == null) {
-                        //  meetingService.addSlot(selectedTimeTimeSlot);
                         meetingRepository.updateSlot(UserState.AWAITING_NAME.name(), selectedTimeTimeSlot.ordinal(), chatId, UserState.AWAITING_TIME.name());
                         sendTextMessage(chatId, "Вы выбрали время: " + selectedTimeTimeSlot.getDisplayName());
                         sendTextMessage(chatId, "Время сохранено. Укажите имя ответственного.");
-                        //  userStates.put(chatId, UserState.AWAITING_NAME);
                     } else {
                         sendTextMessage(chatId, "Время забронировано: " + input);
                     }
@@ -129,28 +126,11 @@ public class BotService extends SpringWebhookBot {
                 case AWAITING_NAME:
                     meetingRepository.updateResponsiblePerson(UserState.FINISHED.name(), input, chatId, UserState.AWAITING_NAME.name());
                     sendTextMessage(chatId, "Бронированный титан готов");
-                    //  Meeting lastMeeting = userSession.getMeetings().get(userSession.getMeetings().size() - 1);
-                    //   lastMeeting.setResponsiblePerson(input);
-                    //  meetingService.completeMeeting(userSession);
                     break;
             }
         }
     }
 
-
-   /* @Operation(summary = "сохраняет дату встречи в бд")
-    public void handleMeetingDate(Long chatId, String callBackData) {
-        try {
-            DayOfWeek dayOfWeek = DayOfWeek.valueOf(callBackData.split("_")[1].toUpperCase());
-            LocalDate selectedDate = getNextOrSameDayOfWeek(dayOfWeek);
-
-            // meetingService.addDate(selectedDate);
-            sendTimeOptions(chatId, dayOfWeek.name());
-            // userStates.put(chatId, UserState.AWAITING_TIME);
-        } catch (Exception e) {
-            sendTextMessage(chatId, "Произошла ошибка при обработке даты. Пожалуйста, попробуйте снова.");
-        }
-    }*/
 
     public InlineKeyboardMarkup sendDaysKeyboard(Long chatId) {
 
@@ -199,8 +179,16 @@ public class BotService extends SpringWebhookBot {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (TimeSlot timeSlot : TimeSlot.values()) {
 
+            String bookedBy = getWhoBooked(timeSlot, dayOfWeekName);
+            String buttonText = timeSlot.getDisplayName();
+
+            if (bookedBy != null) {
+                buttonText += " (Забронировано: " + bookedBy + ")";
+            }
+
             InlineKeyboardButton button = new InlineKeyboardButton();
-            button.setText(timeSlot.getDisplayName());
+            //button.setText(timeSlot.getDisplayName());
+            button.setText(buttonText);
             button.setCallbackData("TIME_" + timeSlot.ordinal() + "_DATE_" + dayOfWeekName);
 
             List<InlineKeyboardButton> row = new ArrayList<>();
@@ -211,6 +199,15 @@ public class BotService extends SpringWebhookBot {
         return inlineKeyboardMarkup;
     }
 
+    private String getWhoBooked(TimeSlot timeSlot, String dayWeek) {
+
+        LocalDate date = getNextOrSameDayOfWeek(DayOfWeek.valueOf(dayWeek.toUpperCase()));
+        Meeting meeting = meetingRepository.findBySlotAndDate(timeSlot, date);
+        if (meeting != null) {
+            return meeting.getResponsiblePerson();
+        }
+        return null;
+    }
 
     public LocalDate getNextOrSameDayOfWeek(DayOfWeek dayOfWeek) {
         LocalDate today = LocalDate.now();
@@ -249,36 +246,18 @@ public class BotService extends SpringWebhookBot {
     }
 
 
-  /*  public void handleMeetingTime(Long chatId, String callBackData) {
-
-            String timeSlot = callBackData.split("_")[1];
-            TimeSlot selectedTimeTimeSlot = TimeSlot.findByIndex(Integer.valueOf(timeSlot));
-            DayOfWeek dayOfWeek = DayOfWeek.valueOf(callBackData.split("_")[3].toUpperCase());
-            LocalDate date = getNextOrSameDayOfWeek(dayOfWeek);
-
-            if (meetingRepository.checkSlot(selectedTimeTimeSlot.ordinal(), date) == null) {
-              //  meetingService.addSlot(selectedTimeTimeSlot);
-
-                sendTextMessage(chatId, "Вы выбрали время: " + selectedTimeTimeSlot.getDisplayName());
-                sendTextMessage(chatId, "Время сохранено. Укажите имя ответственного.");
-                //  userStates.put(chatId, UserState.AWAITING_NAME);
-            }
-            sendTextMessage(chatId, "Неверный формат данных: " + callBackData);
-        }*/
-
     @Operation(summary = "обрабатывает запросы, когда юзер нажимает на кнопку")
     private void handleCallBackQuery(CallbackQuery callbackQuery) {
         String callBackData = callbackQuery.getData();
         Long chatId = callbackQuery.getMessage().getChatId();
 
         if (callBackData.startsWith("TIME_")) {
-            //handleMeetingTime(chatId, callBackData);
             handleInput(chatId, callBackData);
         } else if (callBackData.startsWith("DATE_")) {
-            // handleMeetingDate(chatId, callBackData);
             handleInput(chatId, callBackData);
         }
     }
+
 
     public void korocheZdecMyBeremDannyeKotoryePiwetUserIZabiraemEgoSoobwenieIEgoChatId(Message message) {
         String messageText = message.getText();
@@ -301,41 +280,3 @@ public class BotService extends SpringWebhookBot {
         }
     }
 }
-/*    public void processCallBackQuery(CallbackQuery callbackQuery) {
-        String callBackData = callbackQuery.getData();
-        Long chatId = callbackQuery.getMessage().getChatId();
-
-        if (callBackData.startsWith("TIME_")) {
-            handleMeetingTime(chatId, callBackData);
-        } else if (callBackData.startsWith("DATE_")) {
-            handleMeetingDate(chatId, callBackData);
-       }
-}*/
-
-//
-
-//    @Operation(summary = "сохраняет тему встречи")
-//    public void handleMeetingTopic(Long chatId, String messageText) {
-//        MeetingDetails details = new MeetingDetails(chatId).withTopic(messageText);
-//        meetingService.addTopic(details);
-//        sendTextMessage(chatId, "Тема встречи сохранена. Напишите название проекта");
-//        userState.put(chatId, UserState.AWAITING_PROJECT);
-//    }
-
-
-//    @Operation(summary = "сохраняет проект в бд")
-//    public void handleMeetingProject(Long chatId, String messageText) {
-//        MeetingDetails details = new MeetingDetails(chatId).withProject(messageText);
-//        meetingService.addProject(details);
-//        sendDateOptions(chatId);
-//        userState.put(chatId, UserState.AWAITING_DATE);
-//    }
-//
-//    public void handleMeetingName(Long chatId, String messageText) {
-//        //MeetingDetails details = new MeetingDetails(chatId).withResponsiblePerson(messageText);
-//        meetingService.addResponsiblePerson(details);
-//        sendTextMessage(chatId, "Имя ответственного сохранено. Встреча забронирована.");
-//        userState.remove(chatId);
-//    }
-//    //MeetingDetails details = new MeetingDetails(chatId).withDate(selectedDate);
-//MeetingDetails details = new MeetingDetails(chatId).withSlot(selectedTimeTimeSlot);
