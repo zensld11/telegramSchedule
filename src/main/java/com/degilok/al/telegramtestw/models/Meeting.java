@@ -1,5 +1,6 @@
 package com.degilok.al.telegramtestw.models;
 
+import com.degilok.al.telegramtestw.models.enums.SlotStatus;
 import com.degilok.al.telegramtestw.models.enums.TimeSlot;
 import com.degilok.al.telegramtestw.models.enums.UserState;
 import jakarta.persistence.*;
@@ -30,4 +31,8 @@ public class Meeting {
     @Enumerated(EnumType.STRING)
     @Column(name = "user_session")
     private UserState userSession;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "slot_status")
+    private SlotStatus slotStatus;
 }

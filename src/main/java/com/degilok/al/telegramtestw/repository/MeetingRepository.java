@@ -18,8 +18,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     //List<Meeting> findByChatIdAndSlot(Long chatId, TimeSlot slot);
 
     //отображать занятые слоты
-    @Query(value = "select * from meetings where date = :date", nativeQuery = true)
-    List<Meeting> findTimeSlotsByDate(LocalDate date);
+//    @Query(value = "select * from meetings where date = :date", nativeQuery = true)
+//    List<Meeting> findTimeSlotsByDate(LocalDate date);
 
     @Query(value = "select m from Meeting m where m.slot = :slot and m.date = :date", nativeQuery = false)
     Meeting findBySlotAndDate(TimeSlot slot, LocalDate date);
@@ -54,4 +54,13 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
     @Query(value = "select * from meetings m where m.slot = :slot and m.date = :date", nativeQuery = true)
     Meeting checkSlot(Integer slot, LocalDate date);
+
+/*
+    @Modifying
+    @Transactional
+    @Query(value = "update meetings SET slot_status = :status where slot = :slotIndex", nativeQuery = true)
+    void updateSlotStatus(String status, int slotIndex);
+*/
+
+    List<Meeting> findAllByDate(LocalDate date);
 }
