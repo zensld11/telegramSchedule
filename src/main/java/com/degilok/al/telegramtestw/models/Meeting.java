@@ -8,6 +8,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -26,8 +27,14 @@ public class Meeting {
     String project;
     String topic;
     LocalDate date;
+
+    @Column(name = "creation_time")
+    LocalDateTime creationTime;
+
+
     @Enumerated(EnumType.ORDINAL)
     TimeSlot slot;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_session")
     private UserState userSession;
@@ -35,4 +42,12 @@ public class Meeting {
     @Enumerated(EnumType.STRING)
     @Column(name = "slot_status")
     private SlotStatus slotStatus;
+
+    @PrePersist
+    protected void onCreate(){
+        this.creationTime = LocalDateTime.now();
+    }
+
+    @Column(name = "notified")
+    private boolean notified = false;
 }

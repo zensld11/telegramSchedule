@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
@@ -29,7 +30,9 @@ import org.telegram.telegrambots.starter.SpringWebhookBot;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -76,14 +79,21 @@ public class BotService extends SpringWebhookBot {
                 sendTextMessage(chatId, "У вас нет доступа к этому боту");
                 return null;
             }
+
             String messageText = update.getMessage().getText();
             if (messageText.equals("/start")) {
-                Meeting newMeeting = new Meeting();
-                newMeeting.setChatId(chatId);
-                newMeeting.setUserSession(UserState.AWAITING_DATE);
-                meetingRepository.save(newMeeting);
-                sendTextMessageToShow(chatId, "Добро пожаловать!", createBottomButton());
-                sendDateOptions(chatId);
+                Meeting activeMeeting = meetingRepository.findActiveMeetingByChatId(chatId, UserState.FINISHED);
+                if (activeMeeting != null) {
+                    sendTextMessage(chatId, "Вы уже забронировали встречу. Завершите или отмените текущую встречу, чтобы создать новую");
+                }
+                if (activeMeeting == null) {
+                    Meeting newMeeting = new Meeting();
+                    newMeeting.setChatId(chatId);
+                    newMeeting.setUserSession(UserState.AWAITING_DATE);
+                    meetingRepository.save(newMeeting);
+                    sendTextMessageToShow(chatId, "Добро пожаловать!", createBottomButton());
+                    sendDateOptions(chatId);
+                }
             } else if (messageText.equals("Просмотр встреч")) {
                 showView(chatId);
             } else {
@@ -106,10 +116,6 @@ public class BotService extends SpringWebhookBot {
             switch (meeting.getUserSession()) {
                 case AWAITING_DATE:
                     try {
-                 /*       if (input.equals("/start")) {
-                            sendTextMessage(chatId, "Вы уже начали создание встречи, выберите дату");
-
-                        }*/
                         String[] inputParts = input.split("_");
                         log.info("Разделенные входные данные: {}", Arrays.toString(inputParts));
 
@@ -428,6 +434,43 @@ public class BotService extends SpringWebhookBot {
         }
     }
 
+
+    @Operation(summary = "метод, который проверяет встречи, бронь которых превышает одну минуту")
+    @Scheduled(fixedRate = 30000)
+    public void notifyUserAboutMeetingEnd() {
+        LocalDateTime threeMinutesAgo = LocalDateTime.now().minus(1, ChronoUnit.MINUTES);//3
+
+        List<Meeting> expiredMeetings = meetingRepository.findByCreationTimeBeforeAndUserSessionNotFinished(threeMinutesAgo, UserState.FINISHED);
+
+        for (Meeting meeting : expiredMeetings) {
+            if (!meeting.isNotified()) {
+                sendTextMessage(meeting.getChatId(), "Ваша встреча будет удалена через 1 минуту, если вы ее не завершите");
+                meeting.setNotified(true);
+                meetingRepository.save(meeting);
+            }
+        }
+    }
+
+    @Operation(summary = "метод удаления встреч которые длятся более двух минут")
+    @Scheduled(cron = "0 * * * * *")
+    public void deleteExpiredMeetings() {
+        LocalDateTime fourMinutesAgo = LocalDateTime.now().minus(2, ChronoUnit.MINUTES);
+
+        List<Meeting> meetingsToDelete = meetingRepository.findByCreationTimeBeforeAndUserSessionNotFinished(fourMinutesAgo, UserState.FINISHED);
+
+        if (!meetingsToDelete.isEmpty()) {
+            for (Meeting meeting : meetingsToDelete) {
+                meeting.setNotified(false);
+                meetingRepository.save(meeting);
+            }
+            meetingRepository.deleteAll(meetingsToDelete);
+            log.info("Удалено " + meetingsToDelete.size() + " встреч");
+        }
+        for (Meeting meeting : meetingsToDelete) {
+            sendTextMessage(meeting.getChatId(), "Ваша встреча была удалена из-за неактивности");
+        }
+    }
+
     private void sendTextMessageToShow(Long chatId, String text, ReplyKeyboardMarkup markup) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
@@ -550,8 +593,6 @@ public class BotService extends SpringWebhookBot {
         }
 
         if (meeting.getSlot() != null && meeting.getSlotStatus() == SlotStatus.BOOKED) {
-            // int slotIndex = meeting.getSlot().ordinal();
-            // meetingRepository.updateSlotStatus(SlotStatus.AVAILABLE.name(), slotIndex);
             meeting.getSlot().setStatus(SlotStatus.AVAILABLE);
             log.info("Слот {} освобожден.", meeting.getSlot().getDisplayName());
         } else {
@@ -561,18 +602,4 @@ public class BotService extends SpringWebhookBot {
         log.info("Встреча с id {} отменена.", meeting.getId());
         sendTextMessage(chatId, "Встреча отменена и слот времени освобожден.");
     }
-
-    /*
-      @Operation(summary = "метод, который находит юзера по чат айди и удаляет его встречу")
-    private void cancelMeeting(Long chatId) {
-        Meeting meeting = meetingRepository.findByChatId(chatId);
-        if (meeting != null) {
-            meetingRepository.delete(meeting);
-            sendTextMessage(chatId, "Встреча отменена.");
-        } else {
-            sendTextMessage(chatId, "Нет активных встреч для отмены.");
-        }
-    }
-     */
-
 }

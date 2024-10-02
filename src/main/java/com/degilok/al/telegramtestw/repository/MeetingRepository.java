@@ -2,6 +2,7 @@ package com.degilok.al.telegramtestw.repository;
 
 import com.degilok.al.telegramtestw.models.Meeting;
 import com.degilok.al.telegramtestw.models.enums.TimeSlot;
+import com.degilok.al.telegramtestw.models.enums.UserState;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -9,17 +10,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 
 @Repository
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
-    //List<Meeting> findByChatIdAndSlot(Long chatId, TimeSlot slot);
-
-    //отображать занятые слоты
-//    @Query(value = "select * from meetings where date = :date", nativeQuery = true)
-//    List<Meeting> findTimeSlotsByDate(LocalDate date);
 
     @Query(value = "select m from Meeting m where m.slot = :slot and m.date = :date", nativeQuery = false)
     Meeting findBySlotAndDate(TimeSlot slot, LocalDate date);
@@ -55,12 +52,10 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     @Query(value = "select * from meetings m where m.slot = :slot and m.date = :date", nativeQuery = true)
     Meeting checkSlot(Integer slot, LocalDate date);
 
-/*
-    @Modifying
-    @Transactional
-    @Query(value = "update meetings SET slot_status = :status where slot = :slotIndex", nativeQuery = true)
-    void updateSlotStatus(String status, int slotIndex);
-*/
+    @Query("select m from Meeting m where m.creationTime < :creationTime AND m.userSession <> :finishedState")
+    List<Meeting> findByCreationTimeBeforeAndUserSessionNotFinished(LocalDateTime creationTime, UserState finishedState);
 
-    List<Meeting> findAllByDate(LocalDate date);
+
+    @Query(value = "select m from Meeting m where m.chatId = :chatId and m.userSession != :userState")
+    Meeting findActiveMeetingByChatId(Long chatId, UserState userState);
 }
